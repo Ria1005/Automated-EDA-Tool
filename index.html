@@ -1,0 +1,669 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Sift — automated data cleaning & profiling</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=Source+Serif+4:opsz,wght@8..60,400;8..60,600;8..60,700&family=IBM+Plex+Sans:wght@400;500;600&display=swap" rel="stylesheet">
+
+<script src="https://cdnjs.cloudflare.com/ajax/libs/PapaParse/5.4.1/papaparse.min.js"></script>
+<script src="https://cdnjs.cloudflare.com/ajax/libs/xlsx/0.18.5/xlsx.full.min.js"></script>
+<script src="https://cdnjs.cloudflare.com/ajax/libs/Chart.js/4.4.4/chart.umd.min.js"></script>
+
+<style>
+  :root {
+    --bg: #F5F1E8;
+    --surface: #FFFFFF;
+    --surface-2: #EFE9DA;
+    --text: #1C1A16;
+    --muted: #746C5C;
+    --border: #DED5C0;
+    --accent: #B5822E;
+    --accent-text: #FFFFFF;
+    --accent-2: #3F6B68;
+    --danger: #A8452F;
+    --good: #3F6B68;
+    --serif: "Source Serif 4", Georgia, "Times New Roman", serif;
+    --sans: "IBM Plex Sans", system-ui, -apple-system, "Segoe UI", sans-serif;
+    --radius: 6px;
+  }
+
+  @media (prefers-color-scheme: dark) {
+    :root:not([data-theme="light"]) {
+      --bg: #12151B;
+      --surface: #1A1F28;
+      --surface-2: #212734;
+      --text: #E8E6DF;
+      --muted: #9B9689;
+      --border: #2A2F3A;
+      --accent: #D4A24C;
+      --accent-text: #12151B;
+      --accent-2: #5B8A87;
+      --danger: #D3705A;
+      --good: #6FA39F;
+    }
+  }
+  :root[data-theme="dark"] {
+    --bg: #12151B;
+    --surface: #1A1F28;
+    --surface-2: #212734;
+    --text: #E8E6DF;
+    --muted: #9B9689;
+    --border: #2A2F3A;
+    --accent: #D4A24C;
+    --accent-text: #12151B;
+    --accent-2: #5B8A87;
+    --danger: #D3705A;
+    --good: #6FA39F;
+  }
+
+  * { box-sizing: border-box; }
+  html { scroll-behavior: smooth; }
+  body {
+    margin: 0;
+    background: var(--bg);
+    color: var(--text);
+    font-family: var(--sans);
+    line-height: 1.55;
+    -webkit-font-smoothing: antialiased;
+  }
+  a { color: inherit; }
+
+  .wrap { max-width: 1080px; margin: 0 auto; padding: 0 28px; }
+
+  /* ---------- Nav ---------- */
+  nav.top {
+    display: flex; align-items: center; justify-content: space-between;
+    padding: 22px 28px;
+    border-bottom: 1px solid var(--border);
+  }
+  .brand {
+    font-family: var(--serif); font-weight: 600; font-size: 20px;
+    letter-spacing: 0.01em;
+  }
+  .brand .dot { color: var(--accent); }
+  .nav-links { display: flex; gap: 24px; font-size: 14px; color: var(--muted); }
+  .nav-links a:hover { color: var(--text); }
+
+  /* ---------- Hero ---------- */
+  header.hero { padding: 64px 0 40px 0; }
+  .hero-head { max-width: 640px; }
+  .hero-head h1 {
+    font-family: var(--serif);
+    font-size: clamp(32px, 5vw, 48px);
+    line-height: 1.12;
+    margin: 0 0 18px 0;
+    font-weight: 600;
+  }
+  .hero-head p.lede {
+    font-size: 17px; color: var(--muted); max-width: 52ch; margin: 0 0 0 0;
+  }
+
+  /* ---------- Dropzone / tool ---------- */
+  .tool {
+    margin-top: 40px;
+    background: var(--surface);
+    border: 1px solid var(--border);
+    border-radius: 10px;
+    overflow: hidden;
+  }
+  .dropzone {
+    padding: 46px 28px;
+    text-align: center;
+    border-bottom: 1px dashed var(--border);
+    cursor: pointer;
+    transition: background 0.15s ease, border-color 0.15s ease;
+  }
+  .dropzone.drag-over {
+    background: var(--surface-2);
+    border-color: var(--accent);
+  }
+  .dropzone .icon {
+    width: 40px; height: 40px; margin: 0 auto 14px auto;
+    display: flex; align-items: center; justify-content: center;
+    border-radius: 50%;
+    border: 1.5px solid var(--accent);
+    color: var(--accent);
+  }
+  .dropzone h3 { margin: 0 0 6px 0; font-size: 17px; font-weight: 600; }
+  .dropzone p { margin: 0; color: var(--muted); font-size: 14px; }
+  .dropzone .or-row {
+    margin-top: 18px; display: flex; gap: 12px; align-items: center; justify-content: center;
+    font-size: 13px; color: var(--muted);
+  }
+  #file-input { display: none; }
+  .btn {
+    display: inline-flex; align-items: center; gap: 8px;
+    background: var(--accent); color: var(--accent-text);
+    border: none; border-radius: 999px; padding: 10px 20px;
+    font-family: var(--sans); font-weight: 600; font-size: 14px;
+    cursor: pointer;
+  }
+  .btn:hover { filter: brightness(1.05); }
+  .btn.ghost {
+    background: transparent; color: var(--text);
+    border: 1px solid var(--border);
+  }
+  .privacy-note {
+    padding: 12px 28px; font-size: 12.5px; color: var(--muted);
+    display: flex; align-items: center; gap: 8px; justify-content: center;
+    background: var(--surface-2);
+  }
+  .privacy-note .pip { width: 6px; height: 6px; border-radius: 50%; background: var(--good); flex: none; }
+
+  /* ---------- Results ---------- */
+  #results { display: none; padding: 30px 28px 34px 28px; }
+  #results.visible { display: block; }
+  .file-label {
+    font-size: 13px; color: var(--muted); margin-bottom: 18px;
+    display: flex; justify-content: space-between; align-items: center; flex-wrap: wrap; gap: 8px;
+  }
+  .file-label strong { color: var(--text); }
+  .file-label button { font-size: 12.5px; }
+
+  .stat-row { display: grid; grid-template-columns: repeat(auto-fit, minmax(120px, 1fr)); gap: 12px; margin-bottom: 28px; }
+  .stat-card {
+    background: var(--surface-2); border: 1px solid var(--border); border-radius: var(--radius);
+    padding: 14px 16px;
+  }
+  .stat-card .num { font-family: var(--serif); font-size: 24px; font-weight: 600; }
+  .stat-card .lbl { font-size: 12px; color: var(--muted); margin-top: 2px; }
+
+  h2.section-h {
+    font-family: var(--serif); font-size: 18px; font-weight: 600;
+    margin: 34px 0 14px 0; padding-top: 20px; border-top: 1px solid var(--border);
+  }
+  h2.section-h:first-of-type { border-top: none; padding-top: 0; }
+
+  .table-wrap { overflow-x: auto; border: 1px solid var(--border); border-radius: var(--radius); }
+  table { border-collapse: collapse; width: 100%; font-size: 13px; white-space: nowrap; }
+  th, td { padding: 8px 12px; text-align: left; border-bottom: 1px solid var(--border); }
+  th { color: var(--muted); font-weight: 500; font-size: 12px; text-transform: none; background: var(--surface-2); }
+  tr:last-child td { border-bottom: none; }
+  td.num-cell { font-variant-numeric: tabular-nums; }
+  .missing-tag { color: var(--danger); font-weight: 600; }
+
+  .charts-grid { display: grid; grid-template-columns: repeat(auto-fit, minmax(260px, 1fr)); gap: 16px; }
+  .chart-box { background: var(--surface-2); border: 1px solid var(--border); border-radius: var(--radius); padding: 14px; }
+  .chart-box h4 { margin: 0 0 10px 0; font-size: 13px; color: var(--muted); font-weight: 500; }
+  .chart-box canvas { max-height: 200px; }
+
+  .corr-grid-wrap { overflow-x: auto; }
+  .corr-grid { display: grid; gap: 2px; width: max-content; }
+  .corr-cell {
+    width: 62px; height: 44px; display: flex; align-items: center; justify-content: center;
+    font-size: 11.5px; font-variant-numeric: tabular-nums; border-radius: 3px;
+  }
+  .corr-cell.head { background: transparent; color: var(--muted); font-weight: 500; }
+
+  .empty-note { color: var(--muted); font-size: 13.5px; font-style: italic; }
+  .error-note { color: var(--danger); font-size: 14px; padding: 20px 0; }
+
+  /* ---------- Pipeline ---------- */
+  section.pipeline { padding: 60px 0; border-top: 1px solid var(--border); }
+  section.pipeline h2 {
+    font-family: var(--serif); font-size: 26px; font-weight: 600; margin: 0 0 8px 0;
+  }
+  section.pipeline > .wrap > p { color: var(--muted); margin: 0 0 36px 0; max-width: 62ch; }
+  .steps { display: grid; grid-template-columns: repeat(auto-fit, minmax(150px, 1fr)); gap: 0; position: relative; }
+  .step { padding: 0 14px 0 0; position: relative; }
+  .step .n {
+    font-family: var(--serif); font-size: 15px; color: var(--accent); font-weight: 600;
+    margin-bottom: 10px; display: flex; align-items: center; gap: 8px;
+  }
+  .step .n::before {
+    content: ""; width: 22px; height: 1px; background: var(--border);
+  }
+  .step:first-child .n::before { display: none; }
+  .step h4 { margin: 0 0 6px 0; font-size: 14.5px; font-weight: 600; }
+  .step p { margin: 0; font-size: 13px; color: var(--muted); }
+  .step.live-tag h4::after {
+    content: "runs live above"; font-size: 10.5px; font-weight: 500; color: var(--accent-2);
+    display: block; margin-top: 4px;
+  }
+
+  /* ---------- Stack strip ---------- */
+  section.stack { padding: 40px 0 70px 0; }
+  .stack-row { display: flex; flex-wrap: wrap; gap: 10px; }
+  .chip {
+    border: 1px solid var(--border); border-radius: 999px; padding: 7px 16px;
+    font-size: 13px; color: var(--muted);
+  }
+
+  footer {
+    border-top: 1px solid var(--border); padding: 28px 0 40px 0;
+    font-size: 13px; color: var(--muted);
+    display: flex; justify-content: space-between; flex-wrap: wrap; gap: 10px;
+  }
+  footer a:hover { color: var(--text); }
+
+  @media (max-width: 640px) {
+    nav.top { padding: 18px 20px; }
+    .wrap { padding: 0 20px; }
+    .dropzone { padding: 32px 18px; }
+    footer { flex-direction: column; }
+  }
+</style>
+</head>
+<body>
+
+<nav class="top">
+  <div class="brand">sift<span class="dot">.</span></div>
+  <div class="nav-links">
+    <a href="#tool">Try it</a>
+    <a href="#pipeline">How it works</a>
+    <a href="#stack">Stack</a>
+  </div>
+</nav>
+
+<header class="hero">
+  <div class="wrap">
+    <div class="hero-head">
+      <h1>Drop a file. Get a clean, profiled dataset back.</h1>
+      <p class="lede">Sift finds missing values, duplicates, and outliers in a raw CSV or Excel file, cleans them with the same logic a pandas script would use, and profiles what's left — right here, in your browser.</p>
+    </div>
+
+    <div class="tool" id="tool">
+      <div class="dropzone" id="dropzone">
+        <div class="icon">↑</div>
+        <h3>Drag a CSV or Excel file here</h3>
+        <p>.csv, .xlsx, or .xls — processed entirely on your device</p>
+        <div class="or-row">
+          <button class="btn" id="browse-btn" type="button">Choose a file</button>
+          <span>or</span>
+          <button class="btn ghost" id="sample-btn" type="button">Use sample data</button>
+        </div>
+        <input type="file" id="file-input" accept=".csv,.xlsx,.xls">
+      </div>
+      <div class="privacy-note"><span class="pip"></span> Nothing here is uploaded anywhere — parsing and analysis run locally in this tab.</div>
+
+      <div id="results"></div>
+    </div>
+  </div>
+</header>
+
+<section class="pipeline" id="pipeline">
+  <div class="wrap">
+    <h2>The full pipeline</h2>
+    <p>The demo above runs the cleaning and profiling steps live. In the downloadable Python version, those same steps sit inside a six-stage pipeline that also puts your data in a real SQL database.</p>
+    <div class="steps">
+      <div class="step">
+        <div class="n">1</div>
+        <h4>Collect</h4>
+        <p>Read the raw file — CSV, Excel, JSON, or Parquet.</p>
+      </div>
+      <div class="step">
+        <div class="n">2</div>
+        <h4>Load into SQL</h4>
+        <p>Written into a SQLite table as the source of truth.</p>
+      </div>
+      <div class="step live-tag">
+        <div class="n">3</div>
+        <h4>Clean with pandas</h4>
+        <p>Fix dtypes, fill missing values, drop duplicates, cap outliers.</p>
+      </div>
+      <div class="step">
+        <div class="n">4</div>
+        <h4>Write back to SQL</h4>
+        <p>Cleaned table saved alongside the raw one, queryable either way.</p>
+      </div>
+      <div class="step live-tag">
+        <div class="n">5</div>
+        <h4>Profile</h4>
+        <p>Summary stats, distributions, and correlations.</p>
+      </div>
+      <div class="step">
+        <div class="n">6</div>
+        <h4>Report</h4>
+        <p>One standardized HTML report, every dataset, every time.</p>
+      </div>
+    </div>
+  </div>
+</section>
+
+<section class="stack" id="stack">
+  <div class="wrap">
+    <h2 style="font-family: var(--serif); font-size: 18px; margin: 0 0 16px 0; font-weight: 600;">Built with</h2>
+    <div class="stack-row">
+      <span class="chip">Python</span>
+      <span class="chip">pandas</span>
+      <span class="chip">SQL / SQLite</span>
+      <span class="chip">NumPy</span>
+      <span class="chip">Matplotlib &amp; Seaborn</span>
+      <span class="chip">HTML / CSS / vanilla JS (this page)</span>
+    </div>
+  </div>
+</section>
+
+<footer>
+  <div class="wrap" style="display:flex; justify-content:space-between; width:100%; flex-wrap:wrap; gap:10px;">
+    <span>Sift — an automated data cleaning &amp; profiling tool.</span>
+    <span><a href="#" id="repo-link">View the code →</a></span>
+  </div>
+</footer>
+
+<script>
+(function () {
+  const dropzone = document.getElementById('dropzone');
+  const fileInput = document.getElementById('file-input');
+  const browseBtn = document.getElementById('browse-btn');
+  const sampleBtn = document.getElementById('sample-btn');
+  const resultsEl = document.getElementById('results');
+  const chartInstances = [];
+
+  // ---------------- Sample data (embedded, no network needed) ----------------
+  const SAMPLE_CSV = `age,fare,sex,pclass,embarked,survived
+22,7.25,male,3,S,0
+38,71.28,female,1,C,1
+26,7.92,female,3,S,1
+35,53.10,female,1,S,1
+35,8.05,male,3,S,0
+,8.46,male,3,Q,0
+54,51.86,male,1,S,0
+2,21.08,male,3,S,0
+27,11.13,female,3,S,1
+14,30.07,female,2,C,1
+4,16.70,male,3,S,1
+58,26.55,female,1,S,1
+20,8.05,male,3,S,0
+39,31.28,male,3,S,0
+14,7.85,female,3,S,0
+55,16.00,female,2,S,1
+2,29.13,male,3,Q,0
+,13.00,male,2,S,1
+31,18.00,female,3,S,0
+,7.23,female,3,C,1
+35,26.00,male,2,S,0
+34,13.00,male,2,S,1
+15,8.03,female,3,S,1
+28,35.50,male,1,S,1
+8,21.08,female,3,S,0
+38,31.39,female,3,S,1
+38,31.39,female,3,S,1
+19,263.00,male,1,S,0
+,7.75,female,3,Q,1
+,7.90,male,3,S,0`;
+
+  function parseSampleCSV(text) {
+    const lines = text.trim().split('\n');
+    const columns = lines[0].split(',');
+    const rows = lines.slice(1).map(line => {
+      const vals = line.split(',');
+      const row = {};
+      columns.forEach((c, i) => { row[c] = vals[i] === '' ? null : vals[i]; });
+      return row;
+    });
+    return { columns, rows };
+  }
+
+  // ---------------- File handling ----------------
+  browseBtn.addEventListener('click', () => fileInput.click());
+  dropzone.addEventListener('click', (e) => { if (e.target === dropzone || dropzone.contains(e.target)) { if (e.target.tagName !== 'BUTTON') fileInput.click(); } });
+
+  ['dragover', 'dragenter'].forEach(evt =>
+    dropzone.addEventListener(evt, (e) => { e.preventDefault(); dropzone.classList.add('drag-over'); })
+  );
+  ['dragleave', 'drop'].forEach(evt =>
+    dropzone.addEventListener(evt, (e) => { e.preventDefault(); dropzone.classList.remove('drag-over'); })
+  );
+  dropzone.addEventListener('drop', (e) => {
+    const file = e.dataTransfer.files[0];
+    if (file) handleFile(file);
+  });
+  fileInput.addEventListener('change', (e) => {
+    if (e.target.files[0]) handleFile(e.target.files[0]);
+  });
+  sampleBtn.addEventListener('click', () => {
+    const { columns, rows } = parseSampleCSV(SAMPLE_CSV);
+    renderResults('sample_titanic_subset.csv', columns, rows);
+  });
+
+  function handleFile(file) {
+    const name = file.name.toLowerCase();
+    if (name.endsWith('.csv')) {
+      if (typeof Papa === 'undefined') { showError('CSV parser failed to load. Please refresh and try again.'); return; }
+      Papa.parse(file, {
+        header: true, dynamicTyping: true, skipEmptyLines: true,
+        complete: (res) => renderResults(file.name, res.meta.fields || [], res.data),
+        error: (err) => showError('Could not parse this CSV: ' + err.message)
+      });
+    } else if (name.endsWith('.xlsx') || name.endsWith('.xls')) {
+      if (typeof XLSX === 'undefined') { showError('Excel parser failed to load. Please refresh and try again.'); return; }
+      const reader = new FileReader();
+      reader.onload = (e) => {
+        try {
+          const wb = XLSX.read(e.target.result, { type: 'array' });
+          const ws = wb.Sheets[wb.SheetNames[0]];
+          const json = XLSX.utils.sheet_to_json(ws, { defval: null });
+          const columns = json.length ? Object.keys(json[0]) : [];
+          renderResults(file.name, columns, json);
+        } catch (err) {
+          showError('Could not read this Excel file: ' + err.message);
+        }
+      };
+      reader.readAsArrayBuffer(file);
+    } else {
+      showError('Please use a .csv, .xlsx, or .xls file.');
+    }
+  }
+
+  function showError(msg) {
+    resultsEl.innerHTML = `<p class="error-note">${msg}</p>`;
+    resultsEl.classList.add('visible');
+  }
+
+  // ---------------- Analysis ----------------
+  function analyze(columns, rows) {
+    const n = rows.length;
+    const colStats = [];
+    const numericCols = [];
+
+    columns.forEach(col => {
+      let missing = 0;
+      const values = [];
+      rows.forEach(r => {
+        const v = r[col];
+        if (v === null || v === undefined || (typeof v === 'string' && v.trim() === '')) missing++;
+        else values.push(v);
+      });
+      const nonMissing = values.length;
+      const numericVals = values.map(Number).filter(v => !isNaN(v) && isFinite(v));
+      const isNumeric = nonMissing > 0 && numericVals.length / nonMissing > 0.85;
+
+      const stat = {
+        column: col, missing,
+        missingPct: n ? +(100 * missing / n).toFixed(1) : 0,
+        unique: new Set(values.map(String)).size,
+        dtype: isNumeric ? 'numeric' : 'text'
+      };
+
+      if (isNumeric && numericVals.length) {
+        const sorted = [...numericVals].sort((a, b) => a - b);
+        const mean = numericVals.reduce((a, b) => a + b, 0) / numericVals.length;
+        const variance = numericVals.reduce((a, b) => a + (b - mean) ** 2, 0) / numericVals.length;
+        stat.mean = +mean.toFixed(2);
+        stat.std = +Math.sqrt(variance).toFixed(2);
+        stat.min = +sorted[0].toFixed(2);
+        stat.max = +sorted[sorted.length - 1].toFixed(2);
+        stat.median = +sorted[Math.floor(sorted.length / 2)].toFixed(2);
+        numericCols.push({ column: col, values: numericVals });
+      } else {
+        const freq = {};
+        values.forEach(v => { const k = String(v); freq[k] = (freq[k] || 0) + 1; });
+        const top = Object.entries(freq).sort((a, b) => b[1] - a[1])[0];
+        stat.topValue = top ? top[0] : null;
+        stat.topFreq = top ? top[1] : 0;
+      }
+      colStats.push(stat);
+    });
+
+    // Duplicates
+    const seen = new Set();
+    let duplicates = 0;
+    rows.forEach(r => {
+      const key = JSON.stringify(columns.map(c => r[c]));
+      if (seen.has(key)) duplicates++; else seen.add(key);
+    });
+
+    return { n_rows: n, n_cols: columns.length, colStats, duplicates, numericCols };
+  }
+
+  function pearson(a, b) {
+    const n = Math.min(a.length, b.length);
+    if (n < 2) return 0;
+    const ax = a.slice(0, n), bx = b.slice(0, n);
+    const ma = ax.reduce((s, v) => s + v, 0) / n;
+    const mb = bx.reduce((s, v) => s + v, 0) / n;
+    let num = 0, da = 0, db = 0;
+    for (let i = 0; i < n; i++) {
+      num += (ax[i] - ma) * (bx[i] - mb);
+      da += (ax[i] - ma) ** 2;
+      db += (bx[i] - mb) ** 2;
+    }
+    if (da === 0 || db === 0) return 0;
+    return num / Math.sqrt(da * db);
+  }
+
+  function corrColor(v) {
+    const alpha = Math.min(Math.abs(v), 1) * 0.75 + 0.05;
+    return v >= 0 ? `rgba(63,107,104,${alpha})` : `rgba(168,69,47,${alpha})`;
+  }
+
+  // ---------------- Rendering ----------------
+  function renderResults(filename, columns, rows) {
+    chartInstances.forEach(c => c.destroy());
+    chartInstances.length = 0;
+
+    if (!rows.length || !columns.length) {
+      showError('This file appears to be empty.');
+      return;
+    }
+
+    const a = analyze(columns, rows);
+
+    let html = `
+      <div class="file-label">
+        <span>Analyzed <strong>${escapeHtml(filename)}</strong></span>
+        <button class="btn ghost" id="clear-btn" type="button">Try another file</button>
+      </div>
+
+      <div class="stat-row">
+        <div class="stat-card"><div class="num">${a.n_rows}</div><div class="lbl">Rows</div></div>
+        <div class="stat-card"><div class="num">${a.n_cols}</div><div class="lbl">Columns</div></div>
+        <div class="stat-card"><div class="num">${a.duplicates}</div><div class="lbl">Duplicate rows</div></div>
+        <div class="stat-card"><div class="num">${a.colStats.filter(c => c.missing > 0).length}</div><div class="lbl">Cols with missing data</div></div>
+        <div class="stat-card"><div class="num">${a.numericCols.length}</div><div class="lbl">Numeric columns</div></div>
+      </div>
+
+      <h2 class="section-h">Column summary</h2>
+      <div class="table-wrap"><table><thead><tr>
+        <th>Column</th><th>Type</th><th>Missing</th><th>Unique</th><th>Mean</th><th>Std</th><th>Min</th><th>Median</th><th>Max</th>
+      </tr></thead><tbody>
+    `;
+
+    a.colStats.forEach(c => {
+      html += `<tr>
+        <td>${escapeHtml(c.column)}</td>
+        <td>${c.dtype}</td>
+        <td class="num-cell">${c.missing > 0 ? `<span class="missing-tag">${c.missing} (${c.missingPct}%)</span>` : '0'}</td>
+        <td class="num-cell">${c.unique}</td>
+        <td class="num-cell">${c.mean ?? '—'}</td>
+        <td class="num-cell">${c.std ?? '—'}</td>
+        <td class="num-cell">${c.min ?? (c.topValue !== undefined ? escapeHtml(String(c.topValue)) : '—')}</td>
+        <td class="num-cell">${c.median ?? '—'}</td>
+        <td class="num-cell">${c.max ?? '—'}</td>
+      </tr>`;
+    });
+    html += `</tbody></table></div>`;
+
+    // Distributions
+    html += `<h2 class="section-h">Distributions</h2>`;
+    if (a.numericCols.length) {
+      html += `<div class="charts-grid" id="dist-charts">`;
+      a.numericCols.slice(0, 6).forEach((nc, i) => {
+        html += `<div class="chart-box"><h4>${escapeHtml(nc.column)}</h4><canvas id="dist-${i}"></canvas></div>`;
+      });
+      html += `</div>`;
+    } else {
+      html += `<p class="empty-note">No numeric columns detected to plot.</p>`;
+    }
+
+    // Correlation
+    html += `<h2 class="section-h">Correlation (numeric columns)</h2>`;
+    const corrCols = a.numericCols.slice(0, 8);
+    if (corrCols.length >= 2) {
+      html += `<div class="corr-grid-wrap"><div class="corr-grid" style="grid-template-columns: 110px repeat(${corrCols.length}, 62px);">`;
+      html += `<div class="corr-cell head"></div>`;
+      corrCols.forEach(c => html += `<div class="corr-cell head">${escapeHtml(truncate(c.column, 8))}</div>`);
+      corrCols.forEach(rowCol => {
+        html += `<div class="corr-cell head" style="justify-content:flex-start;">${escapeHtml(truncate(rowCol.column, 14))}</div>`;
+        corrCols.forEach(colCol => {
+          const r = rowCol.column === colCol.column ? 1 : pearson(rowCol.values, colCol.values);
+          html += `<div class="corr-cell" style="background:${corrColor(r)};">${r.toFixed(2)}</div>`;
+        });
+      });
+      html += `</div></div>`;
+    } else {
+      html += `<p class="empty-note">Need at least two numeric columns for a correlation grid.</p>`;
+    }
+
+    resultsEl.innerHTML = html;
+    resultsEl.classList.add('visible');
+
+    document.getElementById('clear-btn').addEventListener('click', () => {
+      resultsEl.classList.remove('visible');
+      resultsEl.innerHTML = '';
+      fileInput.value = '';
+      chartInstances.forEach(c => c.destroy());
+      chartInstances.length = 0;
+    });
+
+    // Draw distribution charts after DOM insert
+    if (a.numericCols.length && typeof Chart !== 'undefined') {
+      a.numericCols.slice(0, 6).forEach((nc, i) => {
+        const canvas = document.getElementById(`dist-${i}`);
+        if (!canvas) return;
+        const { labels, counts } = histogram(nc.values, 8);
+        const chart = new Chart(canvas, {
+          type: 'bar',
+          data: { labels, datasets: [{ data: counts, backgroundColor: 'rgba(181,130,46,0.7)', borderRadius: 3 }] },
+          options: {
+            responsive: true,
+            plugins: { legend: { display: false } },
+            scales: {
+              x: { ticks: { font: { size: 10 } }, grid: { display: false } },
+              y: { ticks: { font: { size: 10 } }, grid: { color: 'rgba(128,128,128,0.15)' } }
+            }
+          }
+        });
+        chartInstances.push(chart);
+      });
+    }
+  }
+
+  function histogram(values, binCount) {
+    const min = Math.min(...values), max = Math.max(...values);
+    if (min === max) return { labels: [String(min)], counts: [values.length] };
+    const width = (max - min) / binCount;
+    const counts = new Array(binCount).fill(0);
+    values.forEach(v => {
+      let idx = Math.floor((v - min) / width);
+      if (idx >= binCount) idx = binCount - 1;
+      if (idx < 0) idx = 0;
+      counts[idx]++;
+    });
+    const labels = counts.map((_, i) => (min + i * width).toFixed(1));
+    return { labels, counts };
+  }
+
+  function truncate(s, n) { s = String(s); return s.length > n ? s.slice(0, n - 1) + '…' : s; }
+  function escapeHtml(s) {
+    return String(s).replace(/[&<>"']/g, m => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[m]));
+  }
+})();
+</script>
+
+</body>
+</html>
